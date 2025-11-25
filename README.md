@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kho Clipboard - Tìm kiếm theo Tag</title>
+    <title>Kho Clipboard - Fix Lỗi Hiển Thị</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -24,25 +24,24 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        input:focus { outline: none; }
-        textarea:focus { outline: none; }
-        select:focus { outline: none; }
+        input:focus, textarea:focus, select:focus { outline: none; }
         
         /* Style cho ContentEditable */
         .rich-input {
             outline: none;
-            min-height: 20px;
+            min-height: 24px; /* Tăng chiều cao tối thiểu để dễ nhìn */
             white-space: pre-wrap; 
             word-break: break-word;
             overflow: hidden;
             display: block;
+            line-height: 1.5;
         }
         .rich-input:focus {
             background-color: #eff6ff; /* blue-50 */
             border-radius: 4px;
             box-shadow: inset 0 0 0 1px #bfdbfe; /* blue-200 */
-            padding: 2px 4px;
-            margin: -2px -4px;
+            padding: 2px 6px;
+            margin: -2px -6px;
         }
         .rich-input[placeholder]:empty:before {
             content: attr(placeholder);
@@ -57,12 +56,6 @@
         .rich-input a:hover {
             color: #1d4ed8;
         }
-
-        .single-line {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
     </style>
 </head>
 <body>
@@ -73,6 +66,7 @@
 
         // --- Helper: Strip HTML tags to get plain text ---
         const stripHtml = (html) => {
+            if (!html) return "";
             const tmp = document.createElement("DIV");
             tmp.innerHTML = html;
             return tmp.textContent || tmp.innerText || "";
@@ -121,18 +115,22 @@
 
         const ITEMS_PER_PAGE = 20;
 
-        // --- Common Components ---
+        // --- Rich Text Editor ---
         const RichTextEditor = ({ html, onChange, placeholder, className }) => {
             const contentEditableRef = useRef(null);
+
             useEffect(() => {
+                // Chỉ set innerHTML khi component mount để tránh reset con trỏ khi đang gõ
                 if (contentEditableRef.current && contentEditableRef.current.innerHTML !== html) {
-                    contentEditableRef.current.innerHTML = html;
+                    contentEditableRef.current.innerHTML = html || "";
                 }
-            }, []);
+            }, []); 
+
             const handleBlur = (e) => {
                 const newHtml = e.target.innerHTML;
                 if (onChange && newHtml !== html) onChange(newHtml);
             };
+
             return (
                 <div
                     ref={contentEditableRef}
@@ -145,6 +143,7 @@
             );
         };
 
+        // --- Auto Resize Textarea ---
         const AutoResizeInput = ({ value, onChange, placeholder, className }) => {
             const textareaRef = useRef(null);
             useEffect(() => {
@@ -179,13 +178,14 @@
             );
         };
 
-        // --- Clipboard Item ---
+        // --- Single Clipboard Item Component ---
         const ClipboardItem = ({ item, handleInlineUpdate, requestDelete, copyToClipboard, copiedId }) => {
             const [isExpanded, setIsExpanded] = useState(true);
 
             return (
                 <div className="bg-white rounded border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow transition-all p-3 group">
                     <div className="flex items-start gap-2">
+                        {/* Nút mở rộng/thu gọn */}
                         <button 
                             onClick={() => setIsExpanded(!isExpanded)}
                             className="mt-0.5 p-0.5 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors shrink-0"
@@ -195,6 +195,7 @@
                         </button>
 
                         <div className="flex-1 min-w-0 flex flex-col sm:flex-row items-start sm:gap-4 gap-1">
+                            {/* Tiêu đề */}
                             <div className="w-full sm:w-1/4 sm:min-w-[120px] sm:max-w-[200px]">
                                 <AutoResizeInput
                                     className="font-medium text-slate-800 text-xs"
@@ -204,10 +205,13 @@
                                 />
                             </div>
                             
+                            {/* Nội dung: Có 2 trạng thái */}
                             {isExpanded ? (
                                 <>
                                     <div className="flex-1 min-w-0 w-full relative group/editor">
+                                        {/* Dùng key để force re-render khi item ID thay đổi, đảm bảo content đúng */}
                                         <RichTextEditor
+                                            key={item.id} 
                                             html={item.content}
                                             onChange={(newHtml) => handleInlineUpdate(item.id, 'content', newHtml)}
                                             placeholder="Nội dung..."
@@ -231,6 +235,7 @@
                                     </div>
                                 </>
                             ) : (
+                                // Chế độ thu gọn: Chỉ hiện text preview
                                 <div className="flex-1 min-w-0 w-full flex items-center cursor-pointer opacity-60 hover:opacity-100 transition-opacity" onClick={() => setIsExpanded(true)}>
                                     <p className="text-xs text-slate-400 truncate select-none">
                                         {stripHtml(item.content) || "(Không có nội dung)"}
@@ -239,6 +244,7 @@
                             )}
                         </div>
 
+                        {/* Actions */}
                         <div className="flex items-center gap-1 shrink-0 mt-0.5">
                             <div className="hidden group-hover:flex items-center">
                                 <button onClick={() => requestDelete(item.id)} className="p-1 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Xóa">
@@ -274,6 +280,7 @@
             const [notification, setNotification] = useState(null);
             const [formData, setFormData] = useState({ title: '', content: '', tags: '' });
 
+            // Load Data
             useEffect(() => {
                 const savedItems = localStorage.getItem('clipboard_items');
                 if (savedItems) {
@@ -283,17 +290,18 @@
                 } else {
                     const initialData = [
                         { id: 1, title: 'Ví dụ Link', content: 'Truy cập <a href="https://google.com">Google</a> ngay', tags: 'demo', date: Date.now() },
-                        { id: 2, title: 'Hướng dẫn', content: 'Bôi đen văn bản và bấm icon Link để chèn liên kết', tags: 'tip', date: Date.now() }
+                        { id: 2, title: 'Hướng dẫn', content: 'Bôi đen văn bản và bấm icon Link để chèn liên kết. Nhập #tag vào ô tìm kiếm để lọc.', tags: 'tip', date: Date.now() }
                     ];
                     setItems(initialData);
                 }
             }, []);
 
+            // Save Data
             useEffect(() => {
                 localStorage.setItem('clipboard_items', JSON.stringify(items));
             }, [items]);
 
-            // --- Lấy danh sách Tag duy nhất ---
+            // Tags Extraction
             const allTags = useMemo(() => {
                 const tags = new Set();
                 items.forEach(item => {
@@ -319,7 +327,9 @@
 
             const handleAdd = (e) => {
                 e.preventDefault();
-                if (!stripHtml(formData.content).trim() && !formData.content.includes('<img')) return;
+                // Cho phép lưu nếu có content hoặc có thẻ img/a (html)
+                if (!stripHtml(formData.content).trim() && !formData.content.includes('<')) return;
+                
                 const newItem = { id: Date.now(), ...formData, date: Date.now() };
                 setItems([newItem, ...items]);
                 showNotification('Đã thêm mới!');
@@ -423,14 +433,12 @@
                 if (!searchQuery) return items;
                 const lower = searchQuery.toLowerCase();
                 
-                // --- Logic tìm kiếm theo Tag (#tag) ---
                 if (lower.startsWith('#')) {
                      const tagSearch = lower.substring(1).trim();
-                     if (!tagSearch) return items; // Chỉ gõ # thì hiện hết
+                     if (!tagSearch) return items; 
                      return items.filter(item => item.tags && item.tags.toLowerCase().includes(tagSearch));
                 }
 
-                // Logic tìm kiếm thường
                 return items.filter(item => 
                     (item.title && item.title.toLowerCase().includes(lower)) ||
                     (item.content && stripHtml(item.content).toLowerCase().includes(lower)) ||
@@ -448,14 +456,12 @@
 
             return (
                 <div className="min-h-screen bg-slate-50 text-slate-800 selection:bg-blue-100 pb-8 text-sm">
-                    {/* Toast */}
                     {notification && (
                         <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded shadow-lg text-white text-xs animate-bounce ${notification.type === 'error' ? 'bg-red-500' : 'bg-emerald-600'}`}>
                             {notification.msg}
                         </div>
                     )}
 
-                    {/* Header */}
                     <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm h-12">
                         <div className="max-w-5xl mx-auto px-4 h-full flex items-center justify-between gap-3">
                             <div className="flex items-center gap-2 flex-shrink-0">
@@ -476,8 +482,6 @@
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
-                                
-                                {/* Tag Filter Dropdown */}
                                 <div className="absolute inset-y-1 right-1">
                                     <div className="relative h-full">
                                         <select 
@@ -503,7 +507,6 @@
                         </div>
                     </header>
 
-                    {/* Body */}
                     <main className="max-w-5xl mx-auto px-4 py-4">
                         <div className="flex justify-between items-center mb-3 gap-4 text-xs">
                             <div className="flex items-center gap-2">
@@ -553,7 +556,6 @@
                         )}
                     </main>
 
-                    {/* Modal Form */}
                     {isModalOpen && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[2px]">
                             <div className="bg-white rounded shadow-xl w-full max-w-lg overflow-hidden animate-fade-in-up">
@@ -599,7 +601,6 @@
                         </div>
                     )}
 
-                    {/* Modal Confirm Delete */}
                     {deleteId && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[2px]">
                             <div className="bg-white rounded shadow-xl w-full max-w-xs overflow-hidden">
